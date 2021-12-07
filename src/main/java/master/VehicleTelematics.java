@@ -35,19 +35,14 @@ public class VehicleTelematics {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // get input data
-        DataStream<String> inputStream = env.readTextFile(input);
-        DataStream<Event> events = inputStream.map(new MapFunction<String, Event>() {
-            @Override
-            public Event map(String line) {
-                return new Event(line);
-            }
-        });
+        DataStream<String> inputStream = env.readTextFile(input).name("Source");
 
-       //SingleOutputStreamOperator<Event> events = env.readTextFile(input).map(new EventParser());
+        SingleOutputStreamOperator<Event> events = inputStream
+                .map(line -> new Event(line)).name("toEvent");
 
         SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
-                .filter(new SpeedRadarFilter())
-                .map(new SpeedRadarMap());
+                .filter(event -> event.f2 > 90).name("filter>90")
+                .map(event -> new EventSpeedRadar(event)).name("toEventSpeedRadar");
 
         // emit result
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
@@ -55,72 +50,5 @@ public class VehicleTelematics {
 
         // execute program
         env.execute("Streaming Vehicle Telematics");
-    }
-
-    // *************************************************************************
-    // USER FUNCTIONS
-    // *************************************************************************
-
-    /**
-     * Implements the EventParser that splits input data in Events
-     */
-    public static final class SpeedRadarMap implements MapFunction<Event, EventSpeedRadar> {
-
-        @Override
-        public EventSpeedRadar map(Event event) throws Exception {
-            return new EventSpeedRadar(event);
-        }
-    }
-
-    /**
-     * Implements the EventParser that splits input data in Events
-     */
-    public static final class SpeedRadarFilter implements FilterFunction<Event> {
-
-        @Override
-        public boolean filter(Event event) throws Exception {
-            return event.f2 > 90;
-        }
-    }
-
-    /**
-     * Implements the EventParser that splits input data in Events
-     */
-    public static final class EventParser implements MapFunction<String, Event> {
-
-        @Override
-        public Event map(String line) {
-            return new Event(line);
-        }
-    }
-}
-
-/**
- * Events class to format the input
- */
-class Event extends Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> {
-
-    public Event(String line){
-        String[] elements = line.split(",");
-        this.f0 = Integer.parseInt(elements[0]);
-        this.f1 = Integer.parseInt(elements[1]);
-        this.f2 = Integer.parseInt(elements[2]);
-        this.f3 = Integer.parseInt(elements[3]);
-        this.f4 = Integer.parseInt(elements[4]);
-        this.f5 = Integer.parseInt(elements[5]);
-        this.f6 = Integer.parseInt(elements[6]);
-        this.f7 = Integer.parseInt(elements[7]);
-    }
-}
-
-class EventSpeedRadar extends Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> {
-
-    public EventSpeedRadar(Event event){
-        this.f0 = event.f0;
-        this.f1 = event.f1;
-        this.f2 = event.f3;
-        this.f3 = event.f6;
-        this.f4 = event.f5;
-        this.f5 = event.f2;
     }
 }
