@@ -1,11 +1,18 @@
 package master;
 
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.java.tuple.Tuple2;
+
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.tuple.Tuple6;
+import org.apache.flink.api.java.tuple.Tuple8;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
+
+import java.nio.file.Paths;
 
 /**
  * Java program using Flink for analysing mobility patterns of vehicles
@@ -28,20 +35,26 @@ public class VehicleTelematics {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // get input data
-        DataStream<String> text = env.readTextFile(input);
+        DataStream<String> inputStream = env.readTextFile(input);
+        DataStream<Event> events = inputStream.map(new MapFunction<String, Event>() {
+            @Override
+            public Event map(String line) {
+                return new Event(line);
+            }
+        });
 
-        DataStream<Tuple2<String, Integer>> counts =
-                // split up the lines in pairs (2-tuples) containing: (word,1)
-                text.flatMap(new Tokenizer())
-                        // group by the tuple field "0" and sum up tuple field "1"
-                        .keyBy(value -> value.f0)
-                        .sum(1);
+       //SingleOutputStreamOperator<Event> events = env.readTextFile(input).map(new EventParser());
+
+        SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
+                .filter(new SpeedRadarFilter())
+                .map(new SpeedRadarMap());
 
         // emit result
-       counts.writeAsText(output);
+        speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);
 
         // execute program
-        env.execute("Streaming VehicleTelematics");
+        env.execute("Streaming Vehicle Telematics");
     }
 
     // *************************************************************************
@@ -49,24 +62,65 @@ public class VehicleTelematics {
     // *************************************************************************
 
     /**
-     * Implements the string tokenizer that splits sentences into words as a user-defined
-     * FlatMapFunction. The function takes a line (String) and splits it into multiple pairs in the
-     * form of "(word,1)" ({@code Tuple2<String, Integer>}).
+     * Implements the EventParser that splits input data in Events
      */
-    public static final class Tokenizer
-            implements FlatMapFunction<String, Tuple2<String, Integer>> {
+    public static final class SpeedRadarMap implements MapFunction<Event, EventSpeedRadar> {
 
         @Override
-        public void flatMap(String value, Collector<Tuple2<String, Integer>> out) {
-            // normalize and split the line
-            String[] tokens = value.toLowerCase().split("\\W+");
-
-            // emit the pairs
-            for (String token : tokens) {
-                if (token.length() > 0) {
-                    out.collect(new Tuple2<>(token, 1));
-                }
-            }
+        public EventSpeedRadar map(Event event) throws Exception {
+            return new EventSpeedRadar(event);
         }
+    }
+
+    /**
+     * Implements the EventParser that splits input data in Events
+     */
+    public static final class SpeedRadarFilter implements FilterFunction<Event> {
+
+        @Override
+        public boolean filter(Event event) throws Exception {
+            return event.f2 > 90;
+        }
+    }
+
+    /**
+     * Implements the EventParser that splits input data in Events
+     */
+    public static final class EventParser implements MapFunction<String, Event> {
+
+        @Override
+        public Event map(String line) {
+            return new Event(line);
+        }
+    }
+}
+
+/**
+ * Events class to format the input
+ */
+class Event extends Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> {
+
+    public Event(String line){
+        String[] elements = line.split(",");
+        this.f0 = Integer.parseInt(elements[0]);
+        this.f1 = Integer.parseInt(elements[1]);
+        this.f2 = Integer.parseInt(elements[2]);
+        this.f3 = Integer.parseInt(elements[3]);
+        this.f4 = Integer.parseInt(elements[4]);
+        this.f5 = Integer.parseInt(elements[5]);
+        this.f6 = Integer.parseInt(elements[6]);
+        this.f7 = Integer.parseInt(elements[7]);
+    }
+}
+
+class EventSpeedRadar extends Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> {
+
+    public EventSpeedRadar(Event event){
+        this.f0 = event.f0;
+        this.f1 = event.f1;
+        this.f2 = event.f3;
+        this.f3 = event.f6;
+        this.f4 = event.f5;
+        this.f5 = event.f2;
     }
 }
