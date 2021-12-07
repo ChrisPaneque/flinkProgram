@@ -11,13 +11,13 @@ public class Event extends Tuple8<Integer, Integer, Integer, Integer, Integer, I
 
     public Event(String line) {
         String[] elements = line.split(",");
-        this.f0 = Integer.parseInt(elements[0]);
-        this.f1 = Integer.parseInt(elements[1]);
-        this.f2 = Integer.parseInt(elements[2]);
-        this.f3 = Integer.parseInt(elements[3]);
-        this.f4 = Integer.parseInt(elements[4]);
-        this.f5 = Integer.parseInt(elements[5]);
-        this.f6 = Integer.parseInt(elements[6]);
-        this.f7 = Integer.parseInt(elements[7]);
+        this.f0 = Integer.parseInt(elements[0]); //time
+        this.f1 = Integer.parseInt(elements[1]); //vid
+        this.f2 = Integer.parseInt(elements[2]); //spd
+        this.f3 = Integer.parseInt(elements[3]); //xWay
+        this.f4 = Integer.parseInt(elements[4]); //lane
+        this.f5 = Integer.parseInt(elements[5]); //dir
+        this.f6 = Integer.parseInt(elements[6]); //seg
+        this.f7 = Integer.parseInt(elements[7]); //pos
     }
 }

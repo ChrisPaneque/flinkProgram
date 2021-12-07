@@ -38,11 +38,11 @@ public class VehicleTelematics {
         DataStream<String> inputStream = env.readTextFile(input).name("Source");
 
         SingleOutputStreamOperator<Event> events = inputStream
-                .map(line -> new Event(line)).name("toEvent");
+                .map(Event::new).name("toEvent");
 
         SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
                 .filter(event -> event.f2 > 90).name("filter>90")
-                .map(event -> new EventSpeedRadar(event)).name("toEventSpeedRadar");
+                .map(EventSpeedRadar::new).name("toEventSpeedRadar");
 
         // emit result
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
