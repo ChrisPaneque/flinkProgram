@@ -49,10 +49,13 @@ public class VehicleTelematics {
                 .map(Event::new).name("toEvent")
                 .assignTimestampsAndWatermarks(strategy);
 
+        //SpeedRadar: detects cars that overcome the speed limit of 90 mph.
         SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
                 .filter(event -> event.get("spd") > 90).name("filterSpeed")
                 .map(EventSpeedRadar::new).name("toEventSpeedRadar");
 
+        //AverageSpeedControl: detects cars with an average speed higher than 60 mph between
+        //segments 52 and 56 (both included) in both directions.
         SingleOutputStreamOperator<EventAverage> averageSpeedControl = events
                 .filter(event -> event.get("seg") >= 52 &&  event.get("seg") <=56 ).name("filterSegments")
                 .keyBy(Event::getKeyForAverage)
@@ -82,11 +85,14 @@ public class VehicleTelematics {
             for (Event in: iterable) {
                 last = in;
             }
-            EventAverage eventAverage = new EventAverage(first,last);
-            if( eventAverage.getAvg() > 60){
-                collector.collect(eventAverage);
+            //Complete segment for both directions
+            if( (first.get("seg") == 56 && last.get("seg") == 52) ||
+                (first.get("seg") == 52 && last.get("seg") == 56) ){
+                EventAverage eventAverage = new EventAverage(first,last);
+                if( eventAverage.getAvg() > 60){
+                    collector.collect(eventAverage);
+                }
             }
         }
     }
 }
-

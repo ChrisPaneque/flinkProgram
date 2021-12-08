@@ -21,17 +21,12 @@ public class EventAverage extends Tuple6<Integer, Integer, Integer, Integer, Int
         this.f2 = first.get("vid");
         this.f3 = first.get("xWay");
         this.f4 = first.get("dir");
-        this.f5 = 0.0f;
+        this.f5 = 0.0f; //AvgSpd
 
-        boolean westbound = first.get("dir") == 1;
+        float time = last.get("time") - first.get("time"); //seconds
+        float distance = Math.abs(first.get("pos") - last.get("pos")); //meters
+        this.f5 = (distance / time) * 2.23694f; //mps(meters per second) -> mph(miles per hour)
 
-        //Complete segment for both directions
-        if( (first.get("seg") == 56 && last.get("seg") == 52) ||
-            (first.get("seg") == 52 && last.get("seg") == 56) ){
-            float time = last.get("time") - first.get("time"); //seconds
-            float distance = westbound ? (first.get("pos") - last.get("pos")) : (last.get("pos") - first.get("pos")); //meters
-            this.f5 = (distance / time) * 2.23694f; //mps(meters per second) -> mph(miles per hour)
-        }
     }
 
     public Float getAvg(){
