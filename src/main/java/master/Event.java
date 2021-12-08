@@ -1,5 +1,6 @@
 package master;
 
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple8;
 
 /**
@@ -19,5 +20,32 @@ public class Event extends Tuple8<Integer, Integer, Integer, Integer, Integer, I
         this.f5 = Integer.parseInt(elements[5]); //dir
         this.f6 = Integer.parseInt(elements[6]); //seg
         this.f7 = Integer.parseInt(elements[7]); //pos
+    }
+
+    public Integer get(String id){
+        switch(id) {
+            case "time":
+                return this.f0;
+            case "vid":
+                return this.f1;
+            case "spd":
+                return this.f2;
+            case "xWay":
+                return this.f3;
+            case "lane":
+                return this.f4;
+            case "dir":
+                return this.f5;
+            case "seg":
+                return this.f6;
+            case "pos":
+                return this.f7;
+            default:
+                throw new IndexOutOfBoundsException(id);
+        }
+    }
+
+    public Tuple3<Integer, Integer, Integer> getKeyForAverage(){
+        return Tuple3.of(this.f1, this.f3, this.f5);//vid, xWay, dir
     }
 }

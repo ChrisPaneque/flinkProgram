@@ -1,15 +1,18 @@
 package master;
 
 
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.java.tuple.Tuple6;
-import org.apache.flink.api.java.tuple.Tuple8;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.nio.file.Paths;
@@ -33,22 +36,57 @@ public class VehicleTelematics {
 
         // set up the execution environment
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+        WatermarkStrategy<Event> strategy = WatermarkStrategy
+                .<Event>forMonotonousTimestamps()
+                .withTimestampAssigner((event, timestamp) -> event.get("time")*1000);
 
         // get input data
-        DataStream<String> inputStream = env.readTextFile(input).name("Source");
+        DataStreamSource<String> inputStream = env.readTextFile(input);
 
         SingleOutputStreamOperator<Event> events = inputStream
-                .map(Event::new).name("toEvent");
+                .map(Event::new).name("toEvent")
+                .assignTimestampsAndWatermarks(strategy);
 
         SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
-                .filter(event -> event.f2 > 90).name("filter>90")
+                .filter(event -> event.get("spd") > 90).name("filterSpeed")
                 .map(EventSpeedRadar::new).name("toEventSpeedRadar");
+
+        SingleOutputStreamOperator<EventAverage> averageSpeedControl = events
+                .filter(event -> event.get("seg") >= 52 &&  event.get("seg") <=56 ).name("filterSegments")
+                .keyBy(Event::getKeyForAverage)
+                .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
+                .process(new AverageProcess());
 
         // emit result
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);
+        averageSpeedControl.writeAsCsv(Paths.get(output, "avgspeedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
 
         // execute program
         env.execute("Streaming Vehicle Telematics");
     }
+
+    public static class AverageProcess extends ProcessWindowFunction<Event, EventAverage, Tuple3<Integer, Integer, Integer>, TimeWindow> {
+
+        @Override
+        public void process(Tuple3<Integer, Integer, Integer> key,
+                            ProcessWindowFunction<Event, EventAverage, Tuple3<Integer, Integer, Integer>, TimeWindow>.Context context,
+                            Iterable<Event> iterable, Collector<EventAverage> collector) throws Exception {
+
+            //We are interested in the first and the last events -> cover a longer distance
+            Event first = iterable.iterator().next();
+            Event last = null;
+            for (Event in: iterable) {
+                last = in;
+            }
+            EventAverage eventAverage = new EventAverage(first,last);
+            if( eventAverage.getAvg() > 60){
+                collector.collect(eventAverage);
+            }
+        }
+    }
 }
+
