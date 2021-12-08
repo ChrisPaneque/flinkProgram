@@ -11,6 +11,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
@@ -62,10 +63,19 @@ public class VehicleTelematics {
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
                 .process(new AverageProcess());
 
+        //AccidentReporter: detects stopped vehicles on any segment.
+        SingleOutputStreamOperator<EventAcccident> accidentReporter = events
+                .filter(event -> event.get("spd") == 0 ).name("filterSpeed0")
+                .keyBy(Event::getKeyForAverage)
+                .countWindow(4, 1)
+                .process(new AccidentProcess());
+
         // emit result
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
         averageSpeedControl.writeAsCsv(Paths.get(output, "avgspeedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);
+        accidentReporter.writeAsCsv(Paths.get(output, "accidents.csv").toString(), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
 
         // execute program
@@ -91,6 +101,28 @@ public class VehicleTelematics {
                 EventAverage eventAverage = new EventAverage(first,last);
                 if( eventAverage.getAvg() > 60){
                     collector.collect(eventAverage);
+                }
+            }
+        }
+    }
+
+    public static class AccidentProcess extends ProcessWindowFunction<Event, EventAcccident, Tuple3<Integer, Integer, Integer>, GlobalWindow> {
+
+        @Override
+        public void process(Tuple3<Integer, Integer, Integer> key,
+                            ProcessWindowFunction<Event, EventAcccident, Tuple3<Integer, Integer, Integer>,
+                            GlobalWindow>.Context context, Iterable<Event> iterable, Collector<EventAcccident> collector) throws Exception {
+
+            //We are interested in the first and the fourth events
+            Event first = iterable.iterator().next();
+            Event fourth = null;
+            int count = 0;
+            for (Event event: iterable) {
+                count++;
+                fourth = event;
+                if(count == 4){
+                    //Send an alert
+                    collector.collect(new EventAcccident(first, fourth));
                 }
             }
         }
