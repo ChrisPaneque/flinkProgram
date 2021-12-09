@@ -54,7 +54,7 @@ public class VehicleTelematics {
 
         //SpeedRadar: detects cars that overcome the speed limit of 90 mph.
         SingleOutputStreamOperator<EventSpeedRadar> speedRadar = events
-                .filter(event -> event.get("spd") > 90).name("filterSpeed")
+                .filter(event -> event.get("spd") > 90).name("filterSpeeding")
                 .map(EventSpeedRadar::new).name("toEventSpeedRadar");
 
         //AverageSpeedControl: detects cars with an average speed higher than 60 mph between
@@ -63,16 +63,16 @@ public class VehicleTelematics {
                 .filter(event -> event.get("seg") >= 52 &&  event.get("seg") <=56 ).name("filterSegments")
                 .keyBy(Event::getKeyForAverage)
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
-                .process(new AverageProcess());
+                .process(new AverageProcess()).name("processAverageControl");
 
         //AccidentReporter: detects stopped vehicles on any segment.
         SingleOutputStreamOperator<EventAcccident> accidentReporter = events
-                .filter(event -> event.get("spd") == 0 ).name("filterSpeed0")
+                .filter(event -> event.get("spd") == 0 ).name("filterStopped")
                 .keyBy(event -> event.get("vid"))
                 .window(SlidingEventTimeWindows.of(Time.seconds(120), Time.seconds(30)))
-                .process(new AccidentProcess());
+                .process(new AccidentProcess()).name("processAccidents");
 
-        // emit result
+        // emit results
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1)
                 .name("saveSpeedRadar");
