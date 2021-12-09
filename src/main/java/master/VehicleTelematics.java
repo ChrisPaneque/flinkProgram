@@ -118,26 +118,25 @@ public class VehicleTelematics {
                             ProcessWindowFunction<Event, EventAcccident, Integer,
                             TimeWindow>.Context context, Iterable<Event> iterable, Collector<EventAcccident> collector) throws Exception {
 
-            //We are interested in the first and the fourth events
+            //We are interested in the first and fourth events
             Event first = iterable.iterator().next();
             Event fourth = null;
             int count = 0;
             for (Event event: iterable) {
                 count++;
                 fourth = event;
-                if(count == 4){
-                    if(fourth.get("time") - first.get("time") == 90){
-                        //Send an alert
-                        collector.collect(new EventAcccident(first, fourth));
-                    }else{
-                        List<Event> events = new ArrayList<Event>(0);
-                        for (Event e: iterable) {
-                            events.add(e);
-                        }
-                        events.sort((a,b) -> a.get("time") - b.get("time") );
-                        collector.collect(new EventAcccident(events.get(0), events.get(3)));
-                    }
-
+            }
+            //If the window is full - four elements within 90 seconds
+            if(count == 4){
+                if(fourth.get("time") - first.get("time") == 90){
+                    //Send an alert - the events are ordered
+                    collector.collect(new EventAcccident(first, fourth));
+                }else{
+                    List<Event> events = new ArrayList<Event>(0);
+                    for (Event e: iterable) events.add(e);
+                    events.sort((a,b) -> a.get("time") - b.get("time") );
+                    //Send an alert - the events were ordered first
+                    collector.collect(new EventAcccident(events.get(0), events.get(3)));
                 }
             }
         }
