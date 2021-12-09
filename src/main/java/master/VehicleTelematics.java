@@ -10,13 +10,15 @@ import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Java program using Flink for analysing mobility patterns of vehicles
@@ -66,17 +68,20 @@ public class VehicleTelematics {
         //AccidentReporter: detects stopped vehicles on any segment.
         SingleOutputStreamOperator<EventAcccident> accidentReporter = events
                 .filter(event -> event.get("spd") == 0 ).name("filterSpeed0")
-                .keyBy(Event::getKeyForAverage)
-                .countWindow(4, 1)
+                .keyBy(event -> event.get("vid"))
+                .window(SlidingEventTimeWindows.of(Time.seconds(120), Time.seconds(30)))
                 .process(new AccidentProcess());
 
         // emit result
         speedRadar.writeAsCsv(Paths.get(output, "speedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
-                .setParallelism(1);
+                .setParallelism(1)
+                .name("saveSpeedRadar");
         averageSpeedControl.writeAsCsv(Paths.get(output, "avgspeedfines.csv").toString(), FileSystem.WriteMode.OVERWRITE)
-                .setParallelism(1);
+                .setParallelism(1)
+                .name("saveAvgSpeed");
         accidentReporter.writeAsCsv(Paths.get(output, "accidents.csv").toString(), FileSystem.WriteMode.OVERWRITE)
-                .setParallelism(1);
+                .setParallelism(1)
+                .name("saveAccidents");
 
         // execute program
         env.execute("Streaming Vehicle Telematics");
@@ -106,12 +111,12 @@ public class VehicleTelematics {
         }
     }
 
-    public static class AccidentProcess extends ProcessWindowFunction<Event, EventAcccident, Tuple3<Integer, Integer, Integer>, GlobalWindow> {
+    public static class AccidentProcess extends ProcessWindowFunction<Event, EventAcccident, Integer, TimeWindow> {
 
         @Override
-        public void process(Tuple3<Integer, Integer, Integer> key,
-                            ProcessWindowFunction<Event, EventAcccident, Tuple3<Integer, Integer, Integer>,
-                            GlobalWindow>.Context context, Iterable<Event> iterable, Collector<EventAcccident> collector) throws Exception {
+        public void process(Integer key,
+                            ProcessWindowFunction<Event, EventAcccident, Integer,
+                            TimeWindow>.Context context, Iterable<Event> iterable, Collector<EventAcccident> collector) throws Exception {
 
             //We are interested in the first and the fourth events
             Event first = iterable.iterator().next();
@@ -121,8 +126,18 @@ public class VehicleTelematics {
                 count++;
                 fourth = event;
                 if(count == 4){
-                    //Send an alert
-                    collector.collect(new EventAcccident(first, fourth));
+                    if(fourth.get("time") - first.get("time") == 90){
+                        //Send an alert
+                        collector.collect(new EventAcccident(first, fourth));
+                    }else{
+                        List<Event> events = new ArrayList<Event>(0);
+                        for (Event e: iterable) {
+                            events.add(e);
+                        }
+                        events.sort((a,b) -> a.get("time") - b.get("time") );
+                        collector.collect(new EventAcccident(events.get(0), events.get(3)));
+                    }
+
                 }
             }
         }

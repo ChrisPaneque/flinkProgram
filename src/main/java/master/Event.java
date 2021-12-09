@@ -1,5 +1,6 @@
 package master;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple8;
 
@@ -47,5 +48,9 @@ public class Event extends Tuple8<Integer, Integer, Integer, Integer, Integer, I
 
     public Tuple3<Integer, Integer, Integer> getKeyForAverage(){
         return Tuple3.of(this.f1, this.f3, this.f5);//vid, xWay, dir
+    }
+
+    public Tuple2<Integer, Integer> getKeyForAccidents(){
+        return Tuple2.of(this.f1, this.f7);//vid, pos
     }
 }
