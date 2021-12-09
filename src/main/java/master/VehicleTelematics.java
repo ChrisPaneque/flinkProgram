@@ -97,8 +97,8 @@ public class VehicleTelematics {
             //We are interested in the first and the last events -> cover a longer distance
             Event first = iterable.iterator().next();
             Event last = null;
-            for (Event in: iterable) {
-                last = in;
+            for (Event event: iterable) {
+                last = event;
             }
             //Complete segment for both directions
             if( (first.get("seg") == 56 && last.get("seg") == 52) ||
@@ -132,7 +132,7 @@ public class VehicleTelematics {
                     //Send an alert - the events are ordered
                     collector.collect(new EventAcccident(first, fourth));
                 }else{
-                    List<Event> events = new ArrayList<Event>(0);
+                    List<Event> events = new ArrayList<>(0);
                     for (Event e: iterable) events.add(e);
                     events.sort((a,b) -> a.get("time") - b.get("time") );
                     //Send an alert - the events were ordered first
