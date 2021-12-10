@@ -63,7 +63,7 @@ public class VehicleTelematics {
                 .assignTimestampsAndWatermarks(strategy).name("timestampAfterFilterSegments")
                 .keyBy(event -> event.get("vid"))
                 .window(EventTimeSessionWindows.withGap(Time.seconds(31)))
-                .process(new AverageProcess()).name("processAverageControl");
+                .aggregate(new AverageAggregate(), new AverageWinProcess()).name("processAverageControl");
 
         //AccidentReporter: detects stopped vehicles on any segment.
         SingleOutputStreamOperator<EventAcccident> accidentReporter = events
@@ -142,6 +142,52 @@ public class VehicleTelematics {
                     //Send an alert - the events were ordered first
                     collector.collect(new EventAcccident(events.get(0), events.get(3)));
                 }
+            }
+        }
+    }
+
+    private static class AverageAggregate implements AggregateFunction<Event, EventAggregator, EventAverage> {
+
+        @Override
+        public EventAggregator createAccumulator() {
+            return new EventAggregator();
+        }
+
+        @Override
+        public EventAggregator add(Event last, EventAggregator accumulator) {
+            accumulator.accumule(last);
+            return accumulator;
+        }
+
+        @Override
+        public EventAverage getResult(EventAggregator accumulator) {
+            EventAverage eventAverage = new EventAverage();
+            //Complete segment for both directions
+            if( accumulator.isCompleted() ){
+                eventAverage = new EventAverage(accumulator.getFirst(), accumulator.getLast());
+            } else{
+                eventAverage.f5 = 0f;
+            }
+            return eventAverage;
+        }
+
+        @Override
+        public EventAggregator merge(EventAggregator a, EventAggregator b) {
+            return a;
+        }
+    }
+
+    public static class AverageWinProcess extends ProcessWindowFunction<EventAverage, EventAverage, Integer, TimeWindow> {
+
+        @Override
+        public void process(Integer key,
+                            ProcessWindowFunction<EventAverage, EventAverage, Integer, TimeWindow>.Context context,
+                            Iterable<EventAverage> iterable, Collector<EventAverage> collector) throws Exception {
+
+            //We are interested in the first
+            EventAverage first = iterable.iterator().next();
+            if( first.getAvg() > 60){
+                collector.collect(first);
             }
         }
     }
